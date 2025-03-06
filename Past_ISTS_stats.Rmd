@@ -1,0 +1,278 @@
+---
+title: "Past_ISTS_stats"
+author: "Aileen Lavelle"
+date: "2024-09-17"
+output:
+  word_document: default
+  html_document: default
+editor_options:
+  chunk_output_type: console
+---
+
+```{r Package Setup}
+library(ggplot2) 
+library(dplyr) 
+library(tidyr)
+library(gridExtra)
+library(paletteer)
+library(reshape2)
+library(readxl)
+```
+
+```{r Aileen datasets from ISTS Proceedings}
+#Reading in the csv I made from ISTS past proceedings published online
+ISTS_Past_proceedings <-  read.csv("ISTS_Past_proceedings_Decol_Data.csv")
+ISTS_Past_proceedings$ISTS_Lifetime_Global_south
+ISTS_Past_proceedings$ISTS_Global_North
+
+#checking the dataset
+head(ISTS_Past_proceedings)
+
+#Removing rows with NA 
+ISTS_Past_proceedings <- ISTS_Past_proceedings %>%
+  filter(!is.na(Country.Held), !is.na(Region.of.world))
+
+#Making a after 1998 subset
+Since_1998 <- ISTS_Past_proceedings %>%
+  filter(Year > 1997)
+
+#Cumulative ISTS in region of world
+cumulative_by_region <- ISTS_Past_proceedings %>%
+  arrange(Year) %>%
+  mutate(
+    Cumulative_Global_North = cumsum(Region.of.world == "Global North"),
+    Cumulative_Global_South = cumsum(Region.of.world == "Global South")
+  ) %>%
+  select(Year, Cumulative_Global_North, Cumulative_Global_South) %>%
+  distinct()
+
+#Cumulative data by host nation
+cumulative_by_country <- ISTS_Past_proceedings %>%
+  group_by(Country.Held) %>%
+  mutate(Cumulative_Count = row_number()) %>%
+  summarize(Cumulative_Count = max(Cumulative_Count), .groups = 'drop') %>%
+  arrange(desc(Cumulative_Count)) %>%
+  na.omit()
+
+#Organizing by country with the most ISTS and making factor for plotting
+cumulative_by_country <- cumulative_by_country %>%
+  arrange(Cumulative_Count) %>%  
+  mutate(Country.Held = factor(Country.Held, levels = Country.Held))
+
+#Need to convert to factor for plotting
+cumulative_by_region$Year <- as.factor(cumulative_by_region$Year)
+
+long <- reshape2::melt(cumulative_by_region)
+
+#Making bar plot of cumulative symposia by region
+p1 <- ggplot(long, aes(x = Year)) +
+  geom_bar(aes(y = value, fill = variable), stat = "identity", position = "stack") +
+  scale_fill_manual(
+    values = c("#4876FF", "#FFB000"),
+    labels = c("Global North", "Global South") 
+  ) +
+  labs(title = "",
+       x = "Year",
+       y = "Total Number of Symposia",
+       fill = "Region") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+ p1
+ 
+# Maing bar plot of cumulative symposia count by host nation
+p2 <- ggplot(cumulative_by_country, aes(x = Country.Held, y = Cumulative_Count, fill = Country.Held)) +
+  geom_bar(stat = "identity") +
+  scale_fill_paletteer_d("colorBlindness::Blue2DarkRed12Steps") +
+  labs(title = "",
+       x = "Host Nation",
+       y = "Total Number of Symposia") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1, size = 12),
+    axis.text.y = element_text(size = 12),                      
+    axis.title.x = element_text(size = 12),                     
+    axis.title.y = element_text(size = 12),                     
+    plot.title = element_text(size = 12, hjust = 0.5),          
+    legend.position = "none"
+  ) 
+p2
+
+#Side by side of plots
+grid.arrange(p1, p2, ncol = 2)
+
+#Now organizing data since 1998 when ISTS became more globally focused
+cumulative_by_region_1998 <- Since_1998 %>%
+    filter(!is.na(Region.of.world)) %>%
+    arrange(Year) %>%
+    mutate(
+        Cumulative_Global_North = cumsum(Region.of.world == "Global North"),
+        Cumulative_Global_South = cumsum(Region.of.world == "Global South")
+    ) %>%
+    select(Year, Cumulative_Global_North, Cumulative_Global_South) %>%
+    distinct()
+
+#Getting cumulative count for each nation ISTS held in since 1998
+cumulative_by_country_1998 <- Since_1998 %>%
+    filter(!is.na(Country.Held)) %>%
+    group_by(Country.Held) %>%
+    mutate(Cumulative_Count = row_number()) %>%
+    summarize(Cumulative_Count = max(Cumulative_Count), .groups = 'drop') %>%
+    arrange(desc(Cumulative_Count)) %>%
+    na.omit() %>%
+    arrange(Cumulative_Count) %>%
+    mutate(Country.Held = factor(Country.Held, levels = Country.Held))
+
+#Removing empty rows
+cumulative_by_country_1998 <- cumulative_by_country_1998 %>%
+    filter(Country.Held != "")
+
+#Getting cumuative count for each region of the world ISTS was held in since 1998
+cumulative_long <- cumulative_by_region_1998 %>%
+    pivot_longer(cols = c(Cumulative_Global_North, Cumulative_Global_South),
+                 names_to = "Region",
+                 values_to = "Cumulative_Count") %>%
+    mutate(Region = recode(Region, 
+                           Cumulative_Global_North = "Global North", 
+                           Cumulative_Global_South = "Global South"))
+
+#Plotting since 1998 data of global region
+p1_1998 <- ggplot(cumulative_long, aes(x = as.factor(Year), y = Cumulative_Count, fill = Region)) +
+    geom_bar(stat = "identity", position = "stack") +
+    scale_fill_manual(values = c("Global North" = "#4876FF", "Global South" = "#FFB000")) +
+    labs(title = "Symposia by Region (Since 1998)",
+         x = "Year",
+         y = "Cumulative Number of Symposia",
+         fill = "Region") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+#Plotting since 1998 data of host nation
+p2_1998 <- ggplot(cumulative_by_country_1998, aes(x = Country.Held, y = Cumulative_Count, fill = Country.Held)) +
+    geom_bar(stat = "identity") +
+    scale_fill_paletteer_d("colorBlindness::Blue2DarkRed12Steps") +
+    labs(title = "Symposia by Host Nation (Since 1998)",
+         x = "Host Nation",
+         y = "Cumulative Number of Symposia") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1),
+          legend.position = "none")
+
+#Side by side plots of 1998
+grid.arrange(p1_1998, p2_1998, ncol = 2)
+```
+
+```{r Lifetime Achievement Award}
+#Filtering the ISTS past proceeding into winners by year
+yearly_data <- ISTS_Past_proceedings %>%
+  group_by(Year) %>%
+  summarise(
+    Global_North_Winners = sum(ISTS_Global_North, na.rm = TRUE),
+    Global_South_Winners = sum(ISTS_Lifetime_Global_south, na.rm = TRUE)
+  ) %>%
+  arrange(Year) %>%  
+  mutate(
+    Cumulative_Global_North = cumsum(Global_North_Winners),
+    Cumulative_Global_South = cumsum(Global_South_Winners)
+  ) %>%
+  select(Year, Cumulative_Global_North, Cumulative_Global_South)
+
+#Making longer
+cumulative_data_long <- yearly_data %>%
+  pivot_longer(cols = c(Cumulative_Global_North, Cumulative_Global_South),
+               names_to = "Region",
+               values_to = "Cumulative_Winners")
+
+#Choosing colorblind friendly colors
+color_palette <- c("Cumulative_Global_North" = "#4876FF", "Cumulative_Global_South" = "#FFB000")
+
+#Plotting
+ggplot(cumulative_data_long, aes(x = Year, y = Cumulative_Winners, color = Region)) +
+  geom_line(size = 1.2) +  
+  scale_color_manual(values = color_palette, labels = c("Global North", "Global South")) +
+  labs(
+    title = "",
+    x = "Year",
+    y = "Total Lifetime Achievement Winners",
+    color = "Region"
+  ) +
+  theme_minimal() +
+  theme(text = element_text(size = 14))  
+```
+
+```{r Data from Robinson et al. 2022}
+#Reading in the Robison et al. 2022 data
+Robinson2022 <- read_excel("~/Desktop/ISTS_Representation_Dryad.xlsx", col_names = FALSE)
+
+#Making the values from second column the column name
+colnames(Robinson2022) <- as.character(unlist(Robinson2022[2,]))
+
+#Removing first row b/c it's empty
+Robinson2022 <- Robinson2022[-1,]
+
+#Checking all the countries from the Robison et al. 2022 paper
+unique(Robinson2022$`Country Of Affliation For First-Author`)
+
+#Manually defining global south countries 
+global_south_countries <- c("Afghanistan", "Algeria", "Angola", "Antigua & Barbuda", "Argentina", "Aruba", 
+                            "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belize", "Benin", 
+                            "Bhutan", "Bolivia", "Botswana", "Brazil", "Brunei", "Burkina Faso", "Burundi", 
+                            "Cambodia", "Cameroon", "Cape Verde", "Central African Rep.", "Chad", "Chile", 
+                            "China", "Colombia", "Comoros", "Congo, Dem. Rep.", "Congo, Rep.", "Costa Rica", 
+                            "Côte d'Ivoire", "Cuba", "Djibouti", "Dominica", "Dominican Rep.", "Ecuador", 
+                            "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Eswatini, Kingdom of", 
+                            "Ethiopia", "Fiji", "Gabon", "Gambia", "Ghana", "Grenada", "Guadeloupe", "Guatemala", 
+                            "Guinea", "Guinea-Bissau", "Guyana", "Haiti", "Honduras", "India", "Indonesia", 
+                            "Iran, Isl. Rep.", "Iraq", "Jamaica", "Jordan", "Kazakhstan", "Kenya", "Kiribati", 
+                            "Kuwait", "Kyrgyzstan", "Lao PDR", "Lebanon", "Lesotho", "Liberia", "Libya", 
+                            "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Mauritania", "Mauritius", 
+                            "Mexico", "Micronesia, Fed. States of", "Mongolia", "Morocco", "Mozambique", 
+                            "Myanmar", "Namibia", "Nepal", "Nicaragua", "Niger", "Nigeria", "Oman", "Pakistan", 
+                            "Palau", "Palestine (West Bank & Gaza)", "Panama", "Papua New Guinea", "Paraguay", 
+                            "Peru", "Philippines", "Qatar", "Rwanda", "Samoa", "São Tomé & Príncipe", "Saudi Arabia", 
+                            "Senegal", "Seychelles", "Sierra Leone", "Solomon Islands", "Somalia", "South Africa", 
+                            "South Sudan", "Sri Lanka", "St Vincent & Grenadines", "Sudan", "Suriname", 
+                            "Syrian Arab Rep.", "Tajikistan", "Tanzania, United Rep.", "Thailand", "Timor-Leste", 
+                            "Togo", "Tonga", "Trinidad & Tobago", "Tunisia", "Turkey", "Turkmenistan", "Tuvalu", 
+                            "Uganda", "United Arab Emirates", "Uruguay", "Uzbekistan", "Vanuatu, Rep.", 
+                            "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe")
+
+#Creating a new column to classify Global North and Global South
+Robinson2022$Region_firstauthor <- ifelse(Robinson2022$`Country Of Affliation For First-Author` %in% global_south_countries, 
+                              "Global South", 
+                              "Global North")
+
+#Listing them alphabetically for organizational pruposes
+Robinson2022$Region_Researched <- ifelse(Robinson2022$`Country Of Research (Listed Alphabetically)` %in% global_south_countries, 
+                              "Global South", 
+                              "Global North")
+
+#Plotting Robison et al. 2022 data by where first author is based
+ggplot(Robinson2022, aes(x = Region_Researched, fill = Region_firstauthor)) +
+  geom_bar(position = "stack") +  
+  labs(x = "Region Researched", y = "Count of Abstracts", fill = "First Author's Region") + 
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+#Checking the names of the continents to make sure this makes sense & no repeats
+unique(Robinson2022$`Continent of Research`)
+
+
+#Spliting the Continent of Research column by commas, creating new rows for each continent
+Robinson2022 <- Robinson2022 %>%
+  separate_rows(`Continent of Research`, sep = "and ")
+Robinson2022 <- Robinson2022 %>%
+  filter(`Continent of Research` != "Not Stated")
+
+#Removing leading or trailing spaces just because some things got wonky 
+Robinson2022$`Continent of Research` <- trimws(Robinson2022$`Continent of Research`)
+
+#Now plotting the continent the first author is based out of
+ggplot(Robinson2022, aes(x = `Continent of Research`, fill = `Region_Researched`)) +
+  geom_bar() +  # Bar plot showing counts
+  labs(x = "Continent of Research", y = "Count of Abstracts", fill = "First Author's Insitution Region") + 
+  scale_fill_paletteer_d("ggsci::category10_d3") +
+  ggtitle("ISTS Abstracts 1988-2018 (Compiled by Robinson et al. 2022)") + 
+  theme_minimal() +  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+

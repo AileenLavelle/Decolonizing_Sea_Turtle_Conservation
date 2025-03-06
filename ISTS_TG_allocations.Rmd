@@ -1,0 +1,95 @@
+---
+title: "ISTS_TG_allocations"
+author: "Aileen Lavelle"
+date: "2025-01-13"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r Package Management}
+library(ggplot2) 
+library(dplyr) 
+library(tidyr)
+library(gridExtra)
+library(paletteer)
+library(reshape2)
+```
+
+```{r ISTS Travel Grants Over time}
+#Read in my Student Travel Grants csv file (compiled generously by Dr. Andrew Maurer & Dr. Alex Gaos)
+##This data is 2002-2025
+ISTS_TG <- read.csv("~/Desktop/UF/Decolonizing_Sea_turtle_research/Decolonizing_numbers/StudentTravelGrant_allocations.csv")
+
+#Remove extra column of no info
+ISTS_TG <- ISTS_TG %>%
+  select(-X)
+
+#Checking the regions of the travel grants
+unique(ISTS_TG$region)
+
+#Creating global north & global south categories manually
+ISTS_TG <- ISTS_TG %>%
+  mutate(region_group = case_when(
+    region %in% c("US/Canada", "Europe") ~ "Global North",
+    region %in% c("Latin America", "Caribbean", "Africa", "Asia/Pac", "Asia/Pac & MidEast", "South Asia", "Asia", "MX/CA America", "SoPacAsia", "Middle East", "So. America","Mx/Central America", "Southeast Asia/Pacific", "Asia/Pacific", "Africa (except North)", "Eng Caribbean", "Middle East/No. Africa", "MX/CA America, Spa Caribbean", "So. Asia", "SE Asia/Pacific", "Oceania/Polynesia", "South America") ~ "Global South",
+    TRUE ~ NA_character_  
+  ))
+
+#Putting UN accepted name for Türkiye
+ISTS_TG$country <- gsub("Turkey", "Türkiye", ISTS_TG$country)
+#Creating a new column that combines country and year
+ISTS_TG$country_year <- paste(ISTS_TG$country, ISTS_TG$year, sep = "\n")
+
+#Getting the sum of grantees over the years but taking out 2022 b/c no one got any that year
+awardees_by_region <- ISTS_TG %>%
+  filter(!is.na(region_group), !is.na(grantees), year != 2022) %>%
+  group_by(year, region_group) %>%
+  summarise(total_awardees = sum(grantees, na.rm = TRUE)) %>%
+  ungroup()
+
+#Merging the `country_year` column from ISTS_TG with the summarized data
+awardees_by_region <- awardees_by_region %>%
+  left_join(
+    ISTS_TG %>% select(year, region_group, country_year) %>% distinct(),
+    by = c("year", "region_group")
+  )
+
+#Plotting number of total awardees
+ggplot(awardees_by_region, aes(x = reorder(country_year, year), y = total_awardees, color = region_group, group = region_group)) +
+  geom_line(size = 4) + 
+  geom_point(size = 5) +
+  scale_color_manual(values = c("Global North" = "#4876FF", "Global South" = "#FFB000")) + 
+  labs(title = "ISTS Student Travel Grant Awardees Over Time",
+       x = "Year", 
+       y = "Total Awardees",
+       color = "Region") +
+  theme_minimal() +
+  scale_y_continuous(breaks = seq(0, max(awardees_by_region$total_awardees), by = 30))
+
+_#Getting the sum of funds for grantees over the years but taking out 2022 b/c no one got any that year
+Money_by_region <- ISTS_TG %>%
+  filter(!is.na(region_group), !is.na(funds_allocated), year != 2022) %>% 
+  group_by(year, region_group) %>%
+  summarise(total_funded = sum(funds_allocated, na.rm = TRUE)) %>%
+  ungroup()
+
+
+#Plotting total US dollars funded for travel grants per year by region
+ggplot(Money_by_region, aes(x = year, y = total_funded, color = region_group, group = region_group)) +
+  geom_line(size = 1) + 
+  geom_point(size = 2) +
+  scale_color_manual(values = c("Global North" = "#4876FF", "Global South" = "#FFB000")) + 
+  labs(title = "ISTS Student Travel Grants by Region Over Time",
+       x = "Year", 
+       y = "Total U.S. Dollars ($)",
+       color = "Region Group") +
+  theme_minimal() +
+  theme(legend.position = "right",
+    plot.title = element_text(hjust = 0.5))
+
+#Getting a total number of money funded for each region based on student travel grant numbers
+sum_awardees_by_region <- Money_by_region %>%
+  group_by(region_group) %>%
+  summarise(total_funded = sum(total_funded))
+```
